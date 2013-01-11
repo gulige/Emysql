@@ -30,8 +30,7 @@
 		execute/3, prepare/3, unprepare/2,
 		open_connections/1, open_connection/1,
 		reset_connection/3, close_connection/1,
-		open_n_connections/2, hstate/1,
-		test_connection/2
+		open_n_connections/2, hstate/1
 ]).
 
 -include("emysql.hrl").
@@ -231,19 +230,6 @@ close_connection(Conn) ->
 	%% CLOSE SOCKET
 	gen_tcp:close(Conn#emysql_connection.socket),
 	ok.
-
-test_connection(Conn, StayLocked) ->
-	case catch emysql_tcp:send_and_recv_packet(Conn#emysql_connection.socket, <<?COM_PING>>, 0) of
-		{'EXIT', _} ->
-			case reset_connection(emysql_conn_mgr:pools(), Conn, StayLocked) of
-				NewConn when is_record(NewConn, emysql_connection) ->
-					NewConn;
-				{error, FailedReset} ->
-					exit({connection_down, {and_conn_reset_failed, FailedReset}})
-			end;
-		_ ->
-			Conn
-	end.
 
 %%--------------------------------------------------------------------
 %%% Internal functions
