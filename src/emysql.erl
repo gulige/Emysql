@@ -557,9 +557,7 @@ execute(PoolId, StmtName, Args, Timeout, nonblocking) when is_atom(StmtName), is
 %% @private 
 %% @end doc: hd feb 11
 %%
-monitor_work(Connection0, Timeout, {M,F,A}) when is_record(Connection0, emysql_connection) ->
-	Connection = emysql_conn:test_connection(Connection0, keep),
-
+monitor_work(Connection, Timeout, {M,F,A}) when is_record(Connection, emysql_connection) ->
 	%% spawn a new process to do work, then monitor that process until
 	%% it either dies, returns data or times out.
 	Parent = self(),
