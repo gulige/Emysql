@@ -31,7 +31,7 @@
 		open_connections/1, open_connection/1,
 		reset_connection/3, close_connection/1,
 		open_n_connections/2, hstate/1,
-		test_connection/2
+		test_connection/2, need_test_connection/1
 ]).
 
 -include("emysql.hrl").
@@ -139,7 +139,7 @@ open_connections(Pool) ->
 			Pool
 	end.
 
-open_connection(#pool{pool_id=PoolId, host=Host, port=Port, user=User, password=Password, database=Database, encoding=Encoding}) ->
+open_connection(#pool{pool_id=PoolId, host=Host, port=Port, user=User, password=Password, database=Database, encoding=Encoding}=Pool) ->
 	 %-% io:format("~p open connection for pool ~p host ~p port ~p user ~p base ~p~n", [self(), PoolId, Host, Port, User, Database]),
 	 %-% io:format("~p open connection: ... connect ... ~n", [self()]),
 	case gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, false}]) of
@@ -161,7 +161,9 @@ open_connection(#pool{pool_id=PoolId, host=Host, port=Port, user=User, password=
 				version = Greeting#greeting.server_version,
 				thread_id = Greeting#greeting.thread_id,
 				caps = Greeting#greeting.caps,
-				language = Greeting#greeting.language
+				language = Greeting#greeting.language,
+				test_period = Pool#pool.conn_test_period,
+				last_test_time = now_seconds()
 			},
 			%-% io:format("~p open connection: ... set db ...~n", [self()]),
 			case emysql_conn:set_database(Connection, Database) of
@@ -216,7 +218,7 @@ reset_connection(Pools, Conn, StayLocked) ->
 					%-% io:format("... done, return new connection~n"),
 					NewConn;
 				Error ->
-					DeadConn = Conn#emysql_connection{alive=false},
+					DeadConn = Conn#emysql_connection{alive=false, last_test_time=0},
 					emysql_conn_mgr:replace_connection_as_available(Conn, DeadConn),
 					%-% io:format("... failed to re-open. Shelving dead connection as available.~n"),
 					{error, {cannot_reopen_in_reset, Error}}
@@ -242,8 +244,22 @@ test_connection(Conn, StayLocked) ->
 					exit({connection_down, {and_conn_reset_failed, FailedReset}})
 			end;
 		_ ->
-			Conn
+			NewConn = Conn#emysql_connection{last_test_time = now_seconds()},
+			case StayLocked of
+				pass -> emysql_conn_mgr:replace_connection_as_available(Conn, NewConn);
+				keep -> emysql_conn_mgr:replace_connection_as_locked(Conn, NewConn)
+			end,
+			NewConn
 	end.
+
+need_test_connection(Conn) ->
+	(Conn#emysql_connection.test_period =:= 0) orelse
+		(Conn#emysql_connection.last_test_time =:= 0) orelse
+		(Conn#emysql_connection.last_test_time + Conn#emysql_connection.test_period < now_seconds()).
+
+now_seconds() ->
+	{M, S, _} = erlang:now(),
+	M * 1000000 + S.
 
 %%--------------------------------------------------------------------
 %%% Internal functions
